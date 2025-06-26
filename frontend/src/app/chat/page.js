@@ -5,6 +5,10 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 const API_BASE_URL = "http://localhost:8080";
 
@@ -191,6 +195,106 @@ export default function ChatPage() {
     const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  // Custom markdown components for styling
+  const markdownComponents = {
+    code: ({ node, inline, className, children, ...props }) => {
+      const match = /language-(\w+)/.exec(className || "");
+      return !inline && match ? (
+        <SyntaxHighlighter
+          style={oneDark}
+          language={match[1]}
+          PreTag="div"
+          className="rounded-lg !bg-gray-800/50 !mt-2 !mb-2"
+          {...props}
+        >
+          {String(children).replace(/\n$/, "")}
+        </SyntaxHighlighter>
+      ) : (
+        <code
+          className="bg-gray-700/50 px-1.5 py-0.5 rounded text-sm font-mono text-purple-300"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    h1: ({ children }) => (
+      <h1 className="text-2xl font-bold mb-4 text-white border-b border-gray-600 pb-2">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="text-xl font-semibold mb-3 text-white mt-6">{children}</h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="text-lg font-semibold mb-2 text-white mt-4">{children}</h3>
+    ),
+    h4: ({ children }) => (
+      <h4 className="text-base font-semibold mb-2 text-white mt-3">
+        {children}
+      </h4>
+    ),
+    p: ({ children }) => (
+      <p className="mb-3 text-gray-100 leading-relaxed">{children}</p>
+    ),
+    ul: ({ children }) => (
+      <ul className="list-disc list-inside mb-3 text-gray-100 space-y-1 ml-4">
+        {children}
+      </ul>
+    ),
+    ol: ({ children }) => (
+      <ol className="list-decimal list-inside mb-3 text-gray-100 space-y-1 ml-4">
+        {children}
+      </ol>
+    ),
+    li: ({ children }) => (
+      <li className="text-gray-100 leading-relaxed">{children}</li>
+    ),
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-4 border-purple-500 pl-4 py-2 mb-3 bg-gray-800/30 rounded-r-lg">
+        <div className="text-gray-200 italic">{children}</div>
+      </blockquote>
+    ),
+    table: ({ children }) => (
+      <div className="overflow-x-auto mb-4">
+        <table className="min-w-full border border-gray-600 rounded-lg">
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }) => (
+      <thead className="bg-gray-700/50">{children}</thead>
+    ),
+    tbody: ({ children }) => (
+      <tbody className="bg-gray-800/20">{children}</tbody>
+    ),
+    tr: ({ children }) => (
+      <tr className="border-b border-gray-600">{children}</tr>
+    ),
+    th: ({ children }) => (
+      <th className="px-4 py-2 text-left text-white font-semibold">
+        {children}
+      </th>
+    ),
+    td: ({ children }) => (
+      <td className="px-4 py-2 text-gray-100">{children}</td>
+    ),
+    a: ({ children, href }) => (
+      <a
+        href={href}
+        className="text-purple-400 hover:text-purple-300 underline transition-colors"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {children}
+      </a>
+    ),
+    strong: ({ children }) => (
+      <strong className="font-semibold text-white">{children}</strong>
+    ),
+    em: ({ children }) => <em className="italic text-gray-200">{children}</em>,
   };
 
   if (!documentId) {
@@ -412,7 +516,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div
-                  className={`max-w-2xl ${
+                  className={`max-w-4xl ${
                     message.type === "user" ? "ml-12" : "mr-12"
                   }`}
                 >
@@ -481,8 +585,21 @@ export default function ChatPage() {
                           </svg>
                         )}
                       </div>
-                      <div className="flex-1">
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                      <div className="flex-1 min-w-0">
+                        {message.type === "assistant" ? (
+                          <div className="prose prose-invert max-w-none">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={markdownComponents}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">
+                            {message.content}
+                          </p>
+                        )}
                         <span className="text-xs opacity-60 mt-2 block">
                           {formatTime(message.timestamp)}
                         </span>
