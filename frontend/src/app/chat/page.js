@@ -3,14 +3,15 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { auth } from "../../lib/firebase";
+import { auth } from "../../lib/firebase"; // Assuming firebase.js is configured with env vars
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
-const API_BASE_URL = "http://localhost:8080";
+// Use environment variable for the API base URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export default function ChatPage() {
   const router = useRouter();
@@ -44,9 +45,12 @@ export default function ChatPage() {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    if (!user || !documentId) return;
+    if (!user || !documentId || !API_BASE_URL) return; // Ensure API_BASE_URL is available
 
-    const wsUrl = `ws://localhost:8080/ws?documentId=${documentId}&userId=u1`;
+    // Construct WebSocket URL using API_BASE_URL
+    const wsUrl =
+      API_BASE_URL.replace("http://", "ws://") +
+      `/ws?documentId=${documentId}&userId=u1`;
     const websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
@@ -127,10 +131,12 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Load document info on mount
+  // Load document info and chat history on mount
   useEffect(() => {
-    if (documentId && user) {
+    if (documentId && user && API_BASE_URL) {
+      // Ensure API_BASE_URL is available
       loadDocumentInfo();
+      loadChatHistory();
     }
   }, [documentId, user]);
 
@@ -139,6 +145,7 @@ export default function ChatPage() {
       const response = await fetch(`${API_BASE_URL}/documents/${documentId}`);
       if (response.ok) {
         const data = await response.json();
+        console.log("Document Info:", data);
         setDocumentInfo(data.document);
       }
     } catch (error) {
@@ -146,32 +153,82 @@ export default function ChatPage() {
     }
   };
 
-  const sendMessage = () => {
-    if (!inputMessage.trim() || !ws || !isConnected) return;
+  const loadChatHistory = async () => {
+    if (!documentId || !user || !API_BASE_URL) return; // Ensure API_BASE_URL is available
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/documents/${documentId}/chat?userId=u1`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Chat History:", data);
+        const history = data.messages || [];
+        setChatHistory(history);
 
-    const message = {
-      type: "query",
+        const formattedMessages = history.map((msg) => ({
+          type: msg.message_type === "bot" ? "assistant" : msg.message_type,
+          content: msg.message_content,
+          timestamp: msg.timestamp,
+        }));
+        setMessages(formattedMessages);
+      }
+    } catch (error) {
+      console.error("Error loading chat history:", error);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!inputMessage.trim() || !ws || !isConnected || !API_BASE_URL) return; // Ensure API_BASE_URL is available
+
+    const userMessage = {
+      type: "user",
       content: inputMessage.trim(),
-      documentId: documentId,
-      userId: user.uid,
       timestamp: new Date().toISOString(),
     };
 
-    // Add user message to chat
-    setMessages((prev) => [
-      ...prev,
-      {
-        type: "user",
-        content: inputMessage.trim(),
-        timestamp: new Date().toISOString(),
-      },
-    ]);
+    // Add user message to chat immediately
+    setMessages((prev) => [...prev, userMessage]);
 
-    // Send to WebSocket
-    ws.send(JSON.stringify(message));
-
+    // Clear input and set loading state
     setInputMessage("");
     setIsLoading(true);
+
+    try {
+      // Save the message to the backend
+      await fetch(`${API_BASE_URL}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          document_id: documentId,
+          user_id: "u1",
+          message_type: "user",
+          message_content: userMessage.content,
+        }),
+      });
+
+      // Send the message via WebSocket to get a response
+      ws.send(
+        JSON.stringify({
+          type: "query",
+          content: userMessage.content,
+          documentId: documentId,
+          userId: "u1",
+        })
+      );
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "error",
+          content: "Failed to send message. Please try again.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -398,8 +455,43 @@ export default function ChatPage() {
       </div>
 
       <div className="relative z-10 flex h-[calc(100vh-120px)]">
-        {/* Chat History Sidebar */}
+        {/* Left Sidebar */}
         <div className="w-80 border-r border-white/10 p-6 overflow-y-auto">
+          {/* Document Info */}
+          {documentInfo && (
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
+                <svg
+                  className="w-5 h-5 text-purple-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <span>Document Details</span>
+              </h3>
+              <div className="space-y-2 text-sm">
+                <p className="text-white font-medium truncate">
+                  {documentInfo.file_name}
+                </p>
+                <p className="text-gray-400">
+                  Size: {formatFileSize(documentInfo.size)}
+                </p>
+                <p className="text-gray-400">
+                  Uploaded:{" "}
+                  {new Date(documentInfo.uploaded_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Chat History */}
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
               <svg
@@ -422,18 +514,16 @@ export default function ChatPage() {
               <div className="space-y-3">
                 {chatHistory.map((chat, index) => (
                   <div
-                    key={index}
+                    key={chat.id}
                     className="p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors border border-white/5"
                   >
                     <p className="text-white text-sm font-medium line-clamp-2 mb-1">
-                      {chat.title || "Untitled Chat"}
+                      {chat.message_content}
                     </p>
                     <span className="text-xs text-gray-400">
                       {new Date(chat.timestamp).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
                       })}
                     </span>
                   </div>

@@ -34,6 +34,7 @@ type Document struct {
 	FileName    string    `json:"file_name" db:"file_name"`
 	StoragePath string    `json:"storage_path" db:"storage_path"`
 	UploadedAt  time.Time `json:"uploaded_at" db:"uploaded_at"`
+	Size        int64     `json:"size" db:"size"`
 }
 
 type DocumentChunk struct {
@@ -175,8 +176,8 @@ func createOrGetUser(ctx context.Context, userID, email string) (*User, error) {
 			return nil, fmt.Errorf("failed to create user: %v", err)
 		}
 
-		user.ID = userID
-		user.Email = email
+		user.ID = "u1"
+		user.Email = "himanshu.khojpur@gmail.com"
 		user.CreatedAt = now
 		return user, nil
 	} else if err != nil {
@@ -268,13 +269,13 @@ func splitTextIntoChunks(text string, maxChunkSize int) []string {
 }
 
 // Save document to database
-func saveDocument(ctx context.Context, userID, fileName, storagePath string) (*Document, error) {
+func saveDocument(ctx context.Context, userID, fileName, storagePath string, size int64) (*Document, error) {
 	documentID := uuid.New().String()
 	now := time.Now()
 
 	_, err := db.ExecContext(ctx,
-		"INSERT INTO documents (id, user_id, file_name, storage_path, uploaded_at) VALUES (?, ?, ?, ?, ?)",
-		documentID, userID, fileName, storagePath, now)
+		"INSERT INTO documents (id, user_id, file_name, storage_path, uploaded_at, size) VALUES (?, ?, ?, ?, ?, ?)",
+		documentID, userID, fileName, storagePath, now, size)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to save document: %v", err)
@@ -286,6 +287,7 @@ func saveDocument(ctx context.Context, userID, fileName, storagePath string) (*D
 		FileName:    fileName,
 		StoragePath: storagePath,
 		UploadedAt:  now,
+		Size:        size,
 	}, nil
 }
 
@@ -453,15 +455,6 @@ func (c *Client) writePump() {
 
 // Handle query messages
 func (c *Client) handleQuery(msg WSMessage) {
-	// Save user message to database
-	_, err := db.Exec(`
-		INSERT INTO chat_messages (id, document_id, user_id, message_type, message_content, timestamp)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		uuid.New().String(), c.documentID, c.userID, "user", msg.Content, time.Now())
-	if err != nil {
-		log.Printf("Error saving user message: %v", err)
-	}
-
 	// Fetch document content
 	rows, err := db.Query("SELECT content FROM document_chunks WHERE document_id = ? ORDER BY chunk_index", c.documentID)
 	if err != nil {
@@ -652,7 +645,7 @@ func uploadHandler(c *gin.Context) {
 	}
 
 	// Save document to database
-	document, err := saveDocument(ctx, req.UserID, fileName, filePath)
+	document, err := saveDocument(ctx, req.UserID, fileName, filePath, header.Size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Success: false,
@@ -693,7 +686,7 @@ func getUserDocuments(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query("SELECT id, user_id, file_name, storage_path, uploaded_at FROM documents WHERE user_id = ? ORDER BY uploaded_at DESC", userID)
+	rows, err := db.Query("SELECT id, user_id, file_name, storage_path, uploaded_at, size FROM documents WHERE user_id = ? ORDER BY uploaded_at DESC", userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Success: false,
@@ -706,7 +699,7 @@ func getUserDocuments(c *gin.Context) {
 	var documents []Document
 	for rows.Next() {
 		var doc Document
-		err := rows.Scan(&doc.ID, &doc.UserID, &doc.FileName, &doc.StoragePath, &doc.UploadedAt)
+		err := rows.Scan(&doc.ID, &doc.UserID, &doc.FileName, &doc.StoragePath, &doc.UploadedAt, &doc.Size)
 		if err != nil {
 			log.Printf("Error scanning document: %v", err)
 			continue
@@ -771,10 +764,10 @@ func getDocumentInfo(c *gin.Context) {
 
 	var doc Document
 	err := db.QueryRow(`
-		SELECT id, user_id, file_name, storage_path, uploaded_at
+		SELECT id, user_id, file_name, storage_path, uploaded_at, size
 		FROM documents
 		WHERE id = ?`, documentID).
-		Scan(&doc.ID, &doc.UserID, &doc.FileName, &doc.StoragePath, &doc.UploadedAt)
+		Scan(&doc.ID, &doc.UserID, &doc.FileName, &doc.StoragePath, &doc.UploadedAt, &doc.Size)
 
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, ErrorResponse{
@@ -1027,6 +1020,34 @@ func callGeminiAPI(prompt string) (string, error) {
 	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
 }
 
+// Save chat message handler
+func saveChatHandler(c *gin.Context) {
+	var msg ChatMessage
+	if err := c.ShouldBindJSON(&msg); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Success: false,
+			Error:   "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	// Save user message to database
+	_, err := db.Exec(`
+		INSERT INTO chat_messages (id, document_id, user_id, message_type, message_content, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		uuid.New().String(), msg.DocumentID, msg.UserID, msg.MessageType, msg.MessageContent, time.Now())
+	if err != nil {
+		log.Printf("Error saving user message: %v", err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Success: false,
+			Error:   "Failed to save chat message",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // Health check
 func healthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
@@ -1076,9 +1097,10 @@ func main() {
 	r.POST("/upload", uploadHandler)
 	r.GET("/users/:userId/documents", getUserDocuments)
 	r.GET("/documents/:documentId/chunks", getDocumentChunks)
-	r.GET("/documents/:documentId/info", getDocumentInfo)   // NEW ROUTE
-	r.GET("/documents/:documentId/chat", getChatHistory)    // NEW ROUTE
+	r.GET("/documents/:documentId", getDocumentInfo)
+	r.GET("/documents/:documentId/chat", getChatHistory)
 	r.POST("/ask", queryLLMHandler)
+	r.POST("/chat", saveChatHandler)
 	r.GET("/ws", handleWebSocket) // NEW WEBSOCKET ROUTE
 
 	// Add a catch-all route for debugging
@@ -1106,6 +1128,7 @@ func main() {
 	log.Printf("  GET  /documents/:documentId/info")
 	log.Printf("  GET  /documents/:documentId/chat")
 	log.Printf("  POST /ask")
+	log.Printf("  POST /chat")
 	log.Printf("  GET  /ws (WebSocket)")
 
 	if err := r.Run(":" + port); err != nil {
