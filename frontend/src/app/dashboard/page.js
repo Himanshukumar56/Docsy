@@ -116,7 +116,9 @@ export default function DashboardPage() {
   // Handle actual file upload to backend
   const handleUpload = async () => {
     if (!selectedFile || !user) {
-      setUploadError("Please select a valid file and ensure you are logged in.");
+      setUploadError(
+        "Please select a valid file and ensure you are logged in."
+      );
       return;
     }
     if (!API_BASE_URL) {
@@ -132,8 +134,8 @@ export default function DashboardPage() {
       // Create FormData to send file and user info
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append("user_id", user.uid); // Use actual user ID
-      formData.append("email", user.email); // Use actual user email
+      formData.append("user_id", "u1"); // Use actual user ID
+      formData.append("email", "himanshu.khojpur@gmail.com"); // Use actual user email
 
       const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
@@ -192,9 +194,12 @@ export default function DashboardPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.chunks && data.chunks.length > 0) {
-          const formattedChunks = data.chunks.map((chunk, index) =>
-            `- **Chunk ${index + 1}:**\n  \`\`\`\n${chunk}\n\`\`\`\n`
-          ).join("\n");
+          const formattedChunks = data.chunks
+            .map(
+              (chunk, index) =>
+                `- **Chunk ${index + 1}:**\n  \`\`\`\n${chunk}\n\`\`\`\n`
+            )
+            .join("\n");
           setChunksModalContent(formattedChunks);
         } else {
           setChunksModalContent("No chunks found for this document.");

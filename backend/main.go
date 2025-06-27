@@ -18,6 +18,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket" // New import for WebSockets
+	"github.com/joho/godotenv"
 	"github.com/ledongthuc/pdf"
 )
 
@@ -139,10 +140,7 @@ var db *sql.DB
 func initDB() error {
 	var err error
 	// Update with your database connection string
-	dbURL := "root:root@tcp(localhost:3306)/document_processor?parseTime=true"
-	if dbURL == "" {
-		dbURL = "username:password@tcp(localhost:3306)/dbname?parseTime=true"
-	}
+	dbURL := os.Getenv("DB_URL")
 
 	db, err = sql.Open("mysql", dbURL)
 	if err != nil {
@@ -971,7 +969,7 @@ func callGeminiAPI(prompt string) (string, error) {
 	}
 
 	// Make API call
-	apiKey := "AIzaSyAupmY4vrPGZj5aQiWQxlQEJHiTrO4FcOg"
+	apiKey := os.Getenv("API_KEY")
 	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey
 
 	resp, err := http.Post(url, "application/json", strings.NewReader(string(jsonBody)))
@@ -1068,6 +1066,10 @@ func healthCheck(c *gin.Context) {
 
 func main() {
 	// Initialize database
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	if err := initDB(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}

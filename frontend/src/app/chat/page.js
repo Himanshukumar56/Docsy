@@ -48,9 +48,8 @@ export default function ChatPage() {
     if (!user || !documentId || !API_BASE_URL) return; // Ensure API_BASE_URL is available
 
     // Construct WebSocket URL using API_BASE_URL
-    const wsUrl =
-      API_BASE_URL.replace("http://", "ws://") +
-      `/ws?documentId=${documentId}&userId=u1`;
+    const API_WS_URL = process.env.NEXT_PUBLIC_API_WS_URL;
+    const wsUrl = API_WS_URL + `/ws?documentId=${documentId}&userId=u1`;
     const websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
