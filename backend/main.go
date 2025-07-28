@@ -15,7 +15,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq" // Use PostgreSQL driver
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket" // New import for WebSockets
 	"github.com/joho/godotenv"
@@ -145,7 +145,7 @@ func initDB() error {
 		dbURL = os.Getenv("DB_URL")
 	}
 
-	db, err = sql.Open("mysql", dbURL)
+	db, err = sql.Open("postgres", dbURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
