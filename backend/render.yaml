@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: docsy-backend
+    env: go
+    plan: free
+    buildCommand: "go build -o main ."
+    startCommand: "./main"
+    envVars:
+      - key: DB_URL
+        fromDatabase:
+          name: docsy-db
+          property: connectionString
+      - key: API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: PORT
+        value: 10000
+databases:
+  - name: docsy-db
+    databaseName: docsy
+    plan: free
