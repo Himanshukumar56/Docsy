@@ -15,11 +15,11 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	_ "github.com/lib/pq" // Use PostgreSQL driver
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket" // New import for WebSockets
 	"github.com/joho/godotenv"
 	"github.com/ledongthuc/pdf"
+	_ "github.com/lib/pq" // Use PostgreSQL driver
 )
 
 // Database models
