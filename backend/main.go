@@ -1078,6 +1078,9 @@ func main() {
 	}
 	defer db.Close()
 
+	// Initialize the database schema
+	initSchema(db)
+
 	// Start the hub
 	go hub.run()
 
