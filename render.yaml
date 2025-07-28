@@ -3,6 +3,7 @@ services:
     name: docsy-backend
     env: go
     plan: free
+    rootDir: backend
     buildCommand: "go build -o main ."
     startCommand: "./main"
     envVars:
