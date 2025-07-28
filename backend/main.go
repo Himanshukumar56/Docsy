@@ -1095,7 +1095,7 @@ func main() {
 	if frontendURL == "" {
 		frontendURL = "http://localhost:3000" // Default for local dev
 	}
-	config.AllowOrigins = []string{frontendURL, "http://localhost:3001", "http://localhost:8080"}
+	config.AllowOrigins = []string{frontendURL, "http://localhost:3001", "http://localhost:8080", "https://docsy-nul446phu-himanshu-kumars-projects-f5ecd6b4.vercel.app"}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"}
 	config.AllowCredentials = true
