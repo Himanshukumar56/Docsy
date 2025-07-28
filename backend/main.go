@@ -140,15 +140,9 @@ var db *sql.DB
 func initDB() error {
 	var err error
 	// Update with your database connection string
-	dbURL := os.Getenv("DB_URL")
-
-	// Check if it's a Render database URL
-	if strings.HasPrefix(dbURL, "mysql://") {
-		// The Render URL is in the format mysql://user:password@host:port/dbname
-		// The go-sql-driver/mysql driver expects user:password@tcp(host:port)/dbname
-		dbURL = strings.Replace(dbURL, "mysql://", "", 1)
-		dbURL = strings.Replace(dbURL, "@", "@tcp(", 1)
-		dbURL = strings.Replace(dbURL, "/", ")/", 1)
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = os.Getenv("DB_URL")
 	}
 
 	db, err = sql.Open("mysql", dbURL)
