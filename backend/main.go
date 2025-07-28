@@ -164,14 +164,14 @@ func createOrGetUser(ctx context.Context, userID, email string) (*User, error) {
 	user := &User{}
 
 	// First try to get existing user
-	err := db.QueryRowContext(ctx, "SELECT id, email, created_at FROM users WHERE id = ?", userID).
+	err := db.QueryRowContext(ctx, "SELECT id, email, created_at FROM users WHERE id = $1", userID).
 		Scan(&user.ID, &user.Email, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		// User doesn't exist, create new one
 		now := time.Now()
 		_, err = db.ExecContext(ctx,
-			"INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+			"INSERT INTO users (id, email, created_at) VALUES ($1, $2, $3)",
 			userID, email, now)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create user: %v", err)
@@ -275,7 +275,7 @@ func saveDocument(ctx context.Context, userID, fileName, storagePath string, siz
 	now := time.Now()
 
 	_, err := db.ExecContext(ctx,
-		"INSERT INTO documents (id, user_id, file_name, storage_path, uploaded_at, size) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO documents (id, user_id, file_name, storage_path, uploaded_at, size) VALUES ($1, $2, $3, $4, $5, $6)",
 		documentID, userID, fileName, storagePath, now, size)
 
 	if err != nil {
@@ -303,7 +303,7 @@ func saveDocumentChunks(ctx context.Context, documentID string, chunks []string)
 	for i, chunk := range chunks {
 		chunkID := uuid.New().String()
 		_, err := tx.ExecContext(ctx,
-			"INSERT INTO document_chunks (id, document_id, chunk_index, content, created_at) VALUES (?, ?, ?, ?, ?)",
+			"INSERT INTO document_chunks (id, document_id, chunk_index, content, created_at) VALUES ($1, $2, $3, $4, $5)",
 			chunkID, documentID, i, chunk, time.Now())
 
 		if err != nil {
@@ -347,7 +347,7 @@ func handleWebSocket(c *gin.Context) {
 
 	// Verify document exists and user has access
 	var docExists bool
-	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM documents WHERE id = ? AND user_id = ?)",
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM documents WHERE id = $1 AND user_id = $2)",
 		documentID, userID).Scan(&docExists)
 	if err != nil {
 		log.Printf("Error verifying document access: %v", err)
@@ -457,7 +457,7 @@ func (c *Client) writePump() {
 // Handle query messages
 func (c *Client) handleQuery(msg WSMessage) {
 	// Fetch document content
-	rows, err := db.Query("SELECT content FROM document_chunks WHERE document_id = ? ORDER BY chunk_index", c.documentID)
+	rows, err := db.Query("SELECT content FROM document_chunks WHERE document_id = $1 ORDER BY chunk_index", c.documentID)
 	if err != nil {
 		c.sendError("Failed to fetch document content")
 		return
@@ -506,7 +506,7 @@ Please provide a helpful and accurate answer based on the document content above
 	responseID := uuid.New().String()
 	_, err = db.Exec(`
 		INSERT INTO chat_messages (id, document_id, user_id, message_type, message_content, timestamp)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		VALUES ($1, $2, $3, $4, $5, $6)`,
 		responseID, c.documentID, c.userID, "bot", answer, time.Now())
 	if err != nil {
 		log.Printf("Error saving bot message: %v", err)
@@ -687,7 +687,7 @@ func getUserDocuments(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query("SELECT id, user_id, file_name, storage_path, uploaded_at, size FROM documents WHERE user_id = ? ORDER BY uploaded_at DESC", userID)
+	rows, err := db.Query("SELECT id, user_id, file_name, storage_path, uploaded_at, size FROM documents WHERE user_id = $1 ORDER BY uploaded_at DESC", userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Success: false,
@@ -725,7 +725,7 @@ func getDocumentChunks(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query("SELECT id, document_id, chunk_index, content, created_at FROM document_chunks WHERE document_id = ? ORDER BY chunk_index", documentID)
+	rows, err := db.Query("SELECT id, document_id, chunk_index, content, created_at FROM document_chunks WHERE document_id = $1 ORDER BY chunk_index", documentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Success: false,
@@ -767,7 +767,7 @@ func getDocumentInfo(c *gin.Context) {
 	err := db.QueryRow(`
 		SELECT id, user_id, file_name, storage_path, uploaded_at, size
 		FROM documents
-		WHERE id = ?`, documentID).
+		WHERE id = $1`, documentID).
 		Scan(&doc.ID, &doc.UserID, &doc.FileName, &doc.StoragePath, &doc.UploadedAt, &doc.Size)
 
 	if err == sql.ErrNoRows {
@@ -806,7 +806,7 @@ func getChatHistory(c *gin.Context) {
 	rows, err := db.Query(`
 		SELECT id, message_type, message_content, timestamp
 		FROM chat_messages
-		WHERE document_id = ? AND user_id = ?
+		WHERE document_id = $1 AND user_id = $2
 		ORDER BY timestamp ASC`, documentID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -862,7 +862,7 @@ func queryLLMHandler(c *gin.Context) {
 
 	// Verify document exists
 	var documentExists bool
-	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM documents WHERE id = ?)", req.DocumentID).Scan(&documentExists)
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM documents WHERE id = $1)", req.DocumentID).Scan(&documentExists)
 	if err != nil {
 		log.Printf("Error checking document existence: %v", err)
 		c.JSON(http.StatusInternalServerError, LLMResponse{
@@ -881,7 +881,7 @@ func queryLLMHandler(c *gin.Context) {
 	}
 
 	// Fetch content chunks from DB
-	rows, err := db.Query("SELECT content FROM document_chunks WHERE document_id = ? ORDER BY chunk_index", req.DocumentID)
+	rows, err := db.Query("SELECT content FROM document_chunks WHERE document_id = $1 ORDER BY chunk_index", req.DocumentID)
 	if err != nil {
 		log.Printf("Error fetching chunks: %v", err)
 		c.JSON(http.StatusInternalServerError, LLMResponse{
@@ -1035,7 +1035,7 @@ func saveChatHandler(c *gin.Context) {
 	// Save user message to database
 	_, err := db.Exec(`
 		INSERT INTO chat_messages (id, document_id, user_id, message_type, message_content, timestamp)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		VALUES ($1, $2, $3, $4, $5, $6)`,
 		uuid.New().String(), msg.DocumentID, msg.UserID, msg.MessageType, msg.MessageContent, time.Now())
 	if err != nil {
 		log.Printf("Error saving user message: %v", err)
