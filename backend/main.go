@@ -1068,7 +1068,7 @@ func main() {
 	// Initialize database
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Error loading .env file, will use environment variables from the system")
 	}
 	if err := initDB(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
